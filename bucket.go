@@ -19,8 +19,8 @@ var ROOT = ""
 type TypeMapJSON struct {
 	Directory bool `json:"directory"`
 	Hidden    bool `json:"hidden"`
-  Image bool `json:"image"`
-  Video bool `json:"video"`
+	Image     bool `json:"image"`
+	Video     bool `json:"video"`
 }
 
 type FileInfoJSON struct {
@@ -77,7 +77,7 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 	// ensure the file/directory actually exists
 	// TODO: see if it's a file or a directory, don't just assume a directory!
 	requestPath, err := normalizePathToRoot(ROOT, mux.Vars(r)["path"])
-  fmt.Println("requestPath:", requestPath)
+	fmt.Println("requestPath:", requestPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -92,13 +92,13 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 
 	// get a map of all the MIME types for the given files
 	mimeTypes := getMIMETypes(requestPath, children)
-  fmt.Println(mimeTypes)
+	fmt.Println(mimeTypes)
 
 	// list the directory to a JSON response
 	var files []FileInfoJSON
 	for _, file := range children {
 		fileName := file.Name()
-    filePath := path.Join(requestPath, fileName)
+		filePath := path.Join(requestPath, fileName)
 		mimeType, _ := mimeTypes[filePath]
 		isHidden := strings.HasPrefix(fileName, ".")
 
@@ -110,8 +110,8 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 			TypeMapJSON{
 				file.IsDir(),
 				isHidden,
-        false,
-        false,
+				false,
+				false,
 			},
 		})
 	}
