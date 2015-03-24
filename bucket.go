@@ -17,18 +17,19 @@ import (
 var ROOT = ""
 
 type TypeMapJSON struct {
-	Directory bool `json:"directory"`
-	Hidden    bool `json:"hidden"`
-	Image     bool `json:"image"`
-	Video     bool `json:"video"`
+	MIME        string `json:"mime"`
+	IsDirectory bool   `json:"is_directory"`
+	IsHidden    bool   `json:"is_hidden"`
+	IsAudio     bool   `json:"is_audio"`
+	IsImage     bool   `json:"is_image"`
+	IsVideo     bool   `json:"is_video"`
 }
 
 type FileInfoJSON struct {
 	Name       string      `json:"name"`
-	Type       string      `json:"type"`
 	Size       int64       `json:"size"`
 	ModifiedAt string      `json:"modified_at"`
-	Is         TypeMapJSON `json:"is"`
+	Type       TypeMapJSON `json:"type"`
 }
 
 // returns a pair of (filename, MIME type) strings given a `file` output line
@@ -102,16 +103,20 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 		mimeType, _ := mimeTypes[filePath]
 		isHidden := strings.HasPrefix(fileName, ".")
 
+		// TODO: determine if it's one of these types!
+		isAudio, isImage, isVideo := false, false, false
+
 		files = append(files, FileInfoJSON{
 			fileName,
-			mimeType,
 			file.Size(),
 			file.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
 			TypeMapJSON{
+				mimeType,
 				file.IsDir(),
 				isHidden,
-				false,
-				false,
+				isAudio,
+				isImage,
+				isVideo,
 			},
 		})
 	}
