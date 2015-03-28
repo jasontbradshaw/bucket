@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,7 +17,7 @@ import (
 
 var ROOT = ""
 
-type TypeMapJSON struct {
+type FileTypeMapJSON struct {
 	MIME        string `json:"mime"`
 	IsDirectory bool   `json:"is_directory"`
 	IsHidden    bool   `json:"is_hidden"`
@@ -26,10 +27,10 @@ type TypeMapJSON struct {
 }
 
 type FileInfoJSON struct {
-	Name       string      `json:"name"`
-	Size       int64       `json:"size"`
-	ModifiedAt string      `json:"modified_at"`
-	Type       TypeMapJSON `json:"type"`
+	Name       string          `json:"name"`
+	Size       int64           `json:"size"`
+	ModifiedAt string          `json:"modified_at"`
+	Type       FileTypeMapJSON `json:"type"`
 }
 
 // returns a pair of (filename, MIME type) strings given a `file` output line
@@ -46,7 +47,7 @@ func parseMIMEType(fileOutputLine string) (string, string, error) {
 }
 
 // given a path, returns a map of child name to MIME type
-func getMIMETypes(root string, files []os.FileInfo) map[string]string {
+func getMIMETypes(root string, files ...os.FileInfo) map[string]string {
 	// build the command to get all the MIME types at once, for efficiency
 	args := []string{"--mime-type", "--dereference", "--preserve-date"}
 	for _, file := range files {
@@ -71,20 +72,68 @@ func getMIMETypes(root string, files []os.FileInfo) map[string]string {
 	return result
 }
 
-func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
-	// disable caching since we'll want to keep this listing up-to-date
-	w.Header().Add("Cache-Control", "no-cache")
+// normalizes the path using a root, and returns it. if the path exits the root
+// or is otherwise invalid, returns an error.
+func normalizePathToRoot(root, child string) (string, error) {
+	// clean the path, resolving any ".."s in it
+	requestPath := path.Clean(path.Join(root, child))
 
-	// ensure the file/directory actually exists
-	// TODO: see if it's a file or a directory, don't just assume a directory!
-	requestPath, err := normalizePathToRoot(ROOT, mux.Vars(r)["path"])
-	fmt.Println("requestPath:", requestPath)
+	// if the path exited the root directory, fail
+	relPath, err := filepath.Rel(root, requestPath)
+	if err != nil || strings.Index(relPath, "..") >= 0 {
+		// keep things vague since someone's probably trying to be sneaky anyway
+		return "", fmt.Errorf("Invalid path")
+	}
+
+	return requestPath, nil
+}
+
+func getFile(w http.ResponseWriter, r *http.Request) {
+	// make sure our path is valid
+	rawPath := mux.Vars(r)["path"]
+	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	children, err := ioutil.ReadDir(requestPath)
+	// stat the file so we can set appropriate response headers, and so we can
+	// ensure it's a regular file and not a directory.
+	fileInfo, err := os.Stat(normalizedPath)
+	if err != nil || fileInfo.IsDir() {
+		// don't report the raw error in case we leak server directory information
+		http.Error(w, "", 404)
+		return
+	}
+
+	file, err := os.Open(normalizedPath)
+	if err != nil {
+		// don't report the raw error in case we leak server directory information
+		http.Error(w, "", 404)
+		return
+	}
+	defer file.Close()
+
+	mimeType := getMIMETypes(filepath.Base(normalizedPath), fileInfo)[normalizedPath]
+	w.Header().Add("Content-Type", mimeType)
+	w.Header().Add("Cache-Control", "no-cache")
+
+	http.ServeFile(w, r, normalizedPath)
+}
+
+func getDirectory(w http.ResponseWriter, r *http.Request) {
+	// disable caching since we'll want to keep this listing up-to-date
+	w.Header().Add("Cache-Control", "no-cache")
+
+	// ensure the directory actually exists
+	rawPath := mux.Vars(r)["path"]
+	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	children, err := ioutil.ReadDir(normalizedPath)
 	if err != nil {
 		// don't report the raw error in case we leak server directory information
 		http.Error(w, "", 404)
@@ -92,14 +141,13 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get a map of all the MIME types for the given files
-	mimeTypes := getMIMETypes(requestPath, children)
-	fmt.Println(mimeTypes)
+	mimeTypes := getMIMETypes(normalizedPath, children...)
 
 	// list the directory to a JSON response
 	var files []FileInfoJSON
 	for _, file := range children {
 		fileName := file.Name()
-		filePath := path.Join(requestPath, fileName)
+		filePath := path.Join(normalizedPath, fileName)
 		mimeType, _ := mimeTypes[filePath]
 		isHidden := strings.HasPrefix(fileName, ".")
 
@@ -110,7 +158,7 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 			fileName,
 			file.Size(),
 			file.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
-			TypeMapJSON{
+			FileTypeMapJSON{
 				mimeType,
 				file.IsDir(),
 				isHidden,
@@ -129,22 +177,6 @@ func getFileOrDirectory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 	w.Write(json)
-}
-
-// normalizes the path using a root, and returns it. if the path exits the root
-// or is otherwise invalid, returns an error.
-func normalizePathToRoot(root, child string) (string, error) {
-	// clean the path, resolving any ".."s in it
-	requestPath := path.Clean(path.Join(root, child))
-
-	// if the path exited the root directory, fail
-	relPath, err := filepath.Rel(root, requestPath)
-	if err != nil || strings.Index(relPath, "..") >= 0 {
-		// keep things vague since someone's probably trying to be sneaky anyway
-		return "", fmt.Errorf("Invalid path")
-	}
-
-	return requestPath, nil
 }
 
 // retrieves/caches/updates a thumbnail file given a path, or returns an error
@@ -166,9 +198,12 @@ func getThumbnail(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	_, err := exec.LookPath("file")
-	if err != nil {
-		panic("The `file` executable could not be found; make sure it's installed!")
+	// ensure we have all the binaries we need
+	requiredBinaries := []string{"file"}
+	for _, binary := range requiredBinaries {
+		if _, err := exec.LookPath(binary); err != nil {
+			log.Panicf("'%s' must be installed and in the PATH\n", binary)
+		}
 	}
 
 	if len(os.Args) <= 1 {
@@ -180,8 +215,12 @@ func main() {
 	fmt.Printf("Serving '%s'...\n", ROOT)
 
 	r := mux.NewRouter()
-	r.HandleFunc("/files/{path:.*}", getFileOrDirectory)
-	r.HandleFunc("/thumbnails/{path:.*}", getThumbnail)
+
+	// anything with a trailing `/` indicates a directory; anything that ends
+	// without a trailing slash indicates a file.
+	r.HandleFunc("/files{path:.*}/", getDirectory)
+	r.HandleFunc("/files/{path:.*[^/]$}", getFile)
+	r.HandleFunc("/thumbnails/{path:.*[^/]$}", getThumbnail)
 
 	http.ListenAndServe(":3000", r)
 }
