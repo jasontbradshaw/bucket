@@ -46,17 +46,34 @@ func parseMIMEType(fileOutputLine string) (string, string, error) {
 	return mimeString[0:splitIndex], strings.TrimSpace(mimeString[splitIndex+1:]), nil
 }
 
+func writeJSONResponse(w http.ResponseWriter, data interface{}) {
+	w.Header().Add("Content-Type", "application/json")
+	w.Header().Add("Cache-Control", "no-cache")
+
+	json, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to generate JSON response", 500)
+		return
+	}
+	w.Write(json)
+}
+
 // given a path, returns a map of child name to MIME type
-func getMIMETypes(root string, files ...os.FileInfo) map[string]string {
-	// build the command to get all the MIME types at once, for efficiency
-	args := []string{"--mime-type", "--dereference", "--preserve-date"}
-	for _, file := range files {
-		args = append(args, path.Join(root, file.Name()))
+func getChildMIMETypes(parentPath string) map[string]string {
+	result := make(map[string]string)
+
+	// get all the children in the given directory
+	children, err := filepath.Glob(path.Join(parentPath, "*"))
+	if err != nil {
+		return result
 	}
 
-	// call `file` for a newline-delimited string of "filename: MIME-type" pairs
-	result := make(map[string]string, len(files))
+	args := []string{"--mime-type", "--dereference", "--preserve-date"}
+	args = append(args, children...)
+
+	// call `file` for a newline-delimited list of "filename: MIME-type" pairs
 	fileOutput, err := exec.Command("file", args...).Output()
+
 	if err != nil {
 		return result
 	}
@@ -64,12 +81,28 @@ func getMIMETypes(root string, files ...os.FileInfo) map[string]string {
 	for _, line := range strings.Split(string(fileOutput), "\n") {
 		fileName, mimeType, err := parseMIMEType(line)
 		if err == nil {
-			// use the full path, so we can handle multiple directories unambiguously
 			result[fileName] = mimeType
 		}
 	}
 
 	return result
+}
+
+func getMIMEType(filePath string) string {
+	fileOutput, err := exec.Command(
+		"file",
+		"--mime-type",
+		"--dereference",
+		"--preserve-date",
+		"--brief",
+		filePath,
+	).Output()
+
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(fileOutput))
 }
 
 // normalizes the path using a root, and returns it. if the path exits the root
@@ -88,7 +121,42 @@ func normalizePathToRoot(root, child string) (string, error) {
 	return requestPath, nil
 }
 
-func getFile(w http.ResponseWriter, r *http.Request) {
+// this returns the info for the specified files _or_ directory, not just files
+func getInfo(w http.ResponseWriter, r *http.Request) {
+	// make sure our path is valid
+	rawPath := mux.Vars(r)["path"]
+	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	// stat the file so we can return its info
+	fileInfo, err := os.Stat(normalizedPath)
+	if err != nil {
+		// don't report the raw error in case we leak server directory information
+		http.Error(w, "", 404)
+		return
+	}
+
+	mimeType := getMIMEType(normalizedPath)
+
+	writeJSONResponse(w, FileInfoJSON{
+		fileInfo.Name(),
+		fileInfo.Size(),
+		fileInfo.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
+		FileTypeMapJSON{
+			mimeType,
+			fileInfo.IsDir(),
+			strings.HasPrefix(fileInfo.Name(), "."),
+			strings.HasPrefix("audio/", mimeType),
+			strings.HasPrefix("image/", mimeType),
+			strings.HasPrefix("video/", mimeType),
+		},
+	})
+}
+
+func download(w http.ResponseWriter, r *http.Request) {
 	// make sure our path is valid
 	rawPath := mux.Vars(r)["path"]
 	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
@@ -99,32 +167,31 @@ func getFile(w http.ResponseWriter, r *http.Request) {
 
 	// stat the file so we can set appropriate response headers, and so we can
 	// ensure it's a regular file and not a directory.
-	fileInfo, err := os.Stat(normalizedPath)
-	if err != nil || fileInfo.IsDir() {
-		// don't report the raw error in case we leak server directory information
-		http.Error(w, "", 404)
-		return
-	}
-
-	file, err := os.Open(normalizedPath)
+	file, err := os.Stat(normalizedPath)
 	if err != nil {
 		// don't report the raw error in case we leak server directory information
 		http.Error(w, "", 404)
 		return
 	}
-	defer file.Close()
 
-	mimeType := getMIMETypes(filepath.Base(normalizedPath), fileInfo)[normalizedPath]
+	// return different responses depending on file type
+	if file.IsDir() {
+		// TODO: zip up the directory contents and serve it up
+	} else {
+		downloadFile(w, r, normalizedPath, file)
+	}
+}
+
+func downloadFile(w http.ResponseWriter, r *http.Request, filePath string, file os.FileInfo) {
+	mimeType := getMIMEType(filePath)
 	w.Header().Add("Content-Type", mimeType)
+	w.Header().Add("Content-Disposition", file.Name())
 	w.Header().Add("Cache-Control", "no-cache")
 
-	http.ServeFile(w, r, normalizedPath)
+	http.ServeFile(w, r, filePath)
 }
 
 func getDirectory(w http.ResponseWriter, r *http.Request) {
-	// disable caching since we'll want to keep this listing up-to-date
-	w.Header().Add("Cache-Control", "no-cache")
-
 	// ensure the directory actually exists
 	rawPath := mux.Vars(r)["path"]
 	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
@@ -140,19 +207,14 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get a map of all the MIME types for the given files
-	mimeTypes := getMIMETypes(normalizedPath, children...)
+	// get a map of all the MIME types for the directory
+	mimeTypes := getChildMIMETypes(normalizedPath)
 
 	// list the directory to a JSON response
 	var files []FileInfoJSON
 	for _, file := range children {
 		fileName := file.Name()
-		filePath := path.Join(normalizedPath, fileName)
-		mimeType, _ := mimeTypes[filePath]
-		isHidden := strings.HasPrefix(fileName, ".")
-
-		// TODO: determine if it's one of these types!
-		isAudio, isImage, isVideo := false, false, false
+		mimeType := mimeTypes[path.Join(normalizedPath, fileName)]
 
 		files = append(files, FileInfoJSON{
 			fileName,
@@ -161,22 +223,19 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 			FileTypeMapJSON{
 				mimeType,
 				file.IsDir(),
-				isHidden,
-				isAudio,
-				isImage,
-				isVideo,
+				strings.HasPrefix(fileName, "."), // hidden?
+				strings.HasPrefix("audio/", mimeType), // audio?
+				strings.HasPrefix("image/", mimeType), // image?
+				strings.HasPrefix("video/", mimeType), // video?
 			},
 		})
 	}
 
-	json, err := json.Marshal(files)
-	if err != nil {
-		http.Error(w, "Failed to generate JSON response", 500)
-		return
-	}
+	writeJSONResponse(w, files)
+}
 
-	w.Header().Add("Content-Type", "application/json")
-	w.Write(json)
+func downloadDirectory(w http.ResponseWriter, r *http.Request) {
+	// TODO: zip up the whole directory and offer it for download
 }
 
 // retrieves/caches/updates a thumbnail file given a path, or returns an error
@@ -212,15 +271,25 @@ func main() {
 
 	ROOT = os.Args[1]
 
-	fmt.Printf("Serving '%s'...\n", ROOT)
+	router := mux.NewRouter()
 
-	r := mux.NewRouter()
-
+	// /files
 	// anything with a trailing `/` indicates a directory; anything that ends
 	// without a trailing slash indicates a file.
-	r.HandleFunc("/files{path:.*}/", getDirectory)
-	r.HandleFunc("/files/{path:.*[^/]$}", getFile)
-	r.HandleFunc("/thumbnails/{path:.*[^/]$}", getThumbnail)
+	filesJSON := router.Headers("Content-Type", "application/json").Subrouter()
+	filesJSON.HandleFunc("/files/{path:.*[^/]$}", getInfo).
+		Headers("Content-Type", "application/json").
+		Methods("GET")
+	filesJSON.HandleFunc("/files{path:.*}/", getDirectory).
+		Headers("Content-Type", "application/json").
+		Methods("GET")
 
-	http.ListenAndServe(":3000", r)
+	router.HandleFunc("/files/{path:.*}", download).
+		Methods("GET")
+
+	// /thumbnails
+	router.HandleFunc("/thumbnails/{path:.*[^/]$}", getThumbnail).
+		Methods("GET")
+
+	http.ListenAndServe(":3000", router)
 }
