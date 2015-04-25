@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -165,7 +167,7 @@ func download(w http.ResponseWriter, r *http.Request) {
 
 	// return different responses depending on file type
 	if file.IsDir() {
-		// TODO: zip up the directory contents and serve it up
+		downloadDirectory(w, r, normalizedPath)
 	} else {
 		downloadFile(w, r, normalizedPath, file)
 	}
@@ -209,22 +211,116 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 			fileName,
 			file.Size(),
 			file.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
-			FileTypeMapJSON{
-				mimeType,
-				file.IsDir(),
-				strings.HasPrefix(fileName, "."), // hidden?
-				strings.HasPrefix("audio/", mimeType), // audio?
-				strings.HasPrefix("image/", mimeType), // image?
-				strings.HasPrefix("video/", mimeType), // video?
-			},
+			mimeType,
+			file.IsDir(),
+			strings.HasPrefix(fileName, "."), // hidden?
 		})
 	}
 
 	writeJSONResponse(w, files)
 }
 
-func downloadDirectory(w http.ResponseWriter, r *http.Request) {
-	// TODO: zip up the whole directory and offer it for download
+// zip up a directory and write it to the response stream
+func downloadDirectory(w http.ResponseWriter, r *http.Request, dirPath string) {
+	// give the file a nice name, but replace the root directory name with
+	// something generic.
+	var downloadName string
+	if dirPath == ROOT {
+		downloadName = "files.zip"
+	} else {
+		downloadName = path.Base(dirPath) + ".zip"
+	}
+
+	w.Header().Add("Content-Type", "application/zip")
+	w.Header().Add("Content-Disposition", downloadName)
+	w.Header().Add("Cache-Control", "no-cache")
+
+	z := zip.NewWriter(w)
+	defer z.Close()
+
+	// walk the directory and add each file to the zip file, giving up (returning
+	// an error) if we encounter an error anywhere along the line.
+	filepath.Walk(dirPath, func(fullFilePath string, file os.FileInfo, err error) error {
+		if err != nil {
+			// don't say what failed since doing so might leak the full path
+			http.Error(w, "Failed to generate archive", 500)
+			return err
+		}
+
+		// use the relative file path so we don't accidentally leak the full path
+		// anywhere. we only use the full path to read the file from disk. we know
+		// it's relative so we can ignore the error.
+		filePath, _ := filepath.Rel(dirPath, fullFilePath)
+
+		// build a header we can use to generate a ZIP archive entry
+		header, err := zip.FileInfoHeader(file)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to generate archive header for %s", filePath), 500)
+			return err
+		}
+
+		// ensure the name is set to relative path within this directory so we'll
+		// preserve the directory's structure within the archive.
+		header.Name = filePath
+
+		// add a directory entry for true directories so they'll show up even if
+		// they have no children. adding a trailing `/` does this for us,
+		// apparently.
+		fileIsSymlink := file.Mode() & os.ModeSymlink == os.ModeSymlink
+		if file.IsDir() && !fileIsSymlink {
+			header.Name += "/"
+		}
+
+		// generate an archive entry for this file/directory/symlink
+		zf, err := z.CreateHeader(header)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to add %s to archive", filePath), 500)
+			return err
+		}
+
+		// if the file is a symlink, preserve it as such
+		if fileIsSymlink {
+			// according to the ZIP format, symlinks must have the namesake file mode
+			// with sole body content of the string path of the link's destination.
+			dest, err := os.Readlink(fullFilePath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to resolve %s", filePath), 500)
+				return err
+			}
+
+			zf.Write([]byte(dest))
+		} else if file.IsDir() {
+			// NOTE: do nothing since all we have to do for directories is create
+			// their header entry, which has already been done.
+		} else {
+			// open the file for reading
+			f, err := os.Open(fullFilePath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to read %s", filePath), 500)
+				return err
+			}
+			defer f.Close()
+
+			// write the file contents to the archive
+			written, err := io.Copy(zf, f)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to write %s to archive after %d bytes", filePath, written), 500)
+				return err
+			}
+		}
+
+		// flush what we've written so far to the client so the download will be as
+		// incremental as possible. doing flushes after every file also ensures that
+		// our memory usage doesn't balloon to the entire size of the zipped
+		// directory, just the size of one file (which is better than nothing...).
+		err = z.Flush()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to flush data for %s", filePath), 500)
+			return err
+		}
+
+		return nil
+	})
 }
 
 // retrieves/caches/updates a thumbnail file given a path, or returns an error
