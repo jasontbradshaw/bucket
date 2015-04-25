@@ -26,6 +26,7 @@ type FileInfoJSON struct {
 	MIMEType    string `json:"mime_type"`
 	IsDirectory bool   `json:"is_directory"`
 	IsHidden    bool   `json:"is_hidden"`
+	IsSymlink   bool   `json:"is_symlink"`
 }
 
 // returns a pair of (filename, MIME type) strings given a `file` output line
@@ -87,7 +88,7 @@ func getMIMEType(filePath string) string {
 	fileOutput, err := exec.Command(
 		"file",
 		"--mime-type",
-		"--dereference",
+		// "--dereference",
 		"--preserve-date",
 		"--brief",
 		filePath,
@@ -144,6 +145,7 @@ func getInfo(w http.ResponseWriter, r *http.Request) {
 		mimeType,
 		fileInfo.IsDir(),
 		strings.HasPrefix(fileInfo.Name(), "."),
+		fileInfo.Mode()&os.ModeSymlink == os.ModeSymlink,
 	})
 }
 
@@ -214,6 +216,7 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 			mimeType,
 			file.IsDir(),
 			strings.HasPrefix(fileName, "."), // hidden?
+			file.Mode()&os.ModeSymlink == os.ModeSymlink,
 		})
 	}
 
@@ -266,7 +269,7 @@ func downloadDirectory(w http.ResponseWriter, r *http.Request, dirPath string) {
 		// add a directory entry for true directories so they'll show up even if
 		// they have no children. adding a trailing `/` does this for us,
 		// apparently.
-		fileIsSymlink := file.Mode() & os.ModeSymlink == os.ModeSymlink
+		fileIsSymlink := file.Mode()&os.ModeSymlink == os.ModeSymlink
 		if file.IsDir() && !fileIsSymlink {
 			header.Name += "/"
 		}
@@ -327,12 +330,12 @@ func downloadDirectory(w http.ResponseWriter, r *http.Request, dirPath string) {
 // if no thumbnail could be geneated.
 func getThumbnail(w http.ResponseWriter, r *http.Request) {
 	// TODO:
-	// * look up the existing file to get its modtime and ensure it exists
+	// * look up the parent file to get its modtime and ensure it exists
 	// * see if we have a cached file with the same modtime
 	// ** if so, use it
 	// ** otherwise, generate a preview
 	// *** use graphicsmagick/ffmpeg to generate a preview thumbnail
-	// *** store the new file to a mirroed path with the filename plus the modtime
+	// *** store the thumbnail to a mirrored path with the filename plus the modtime
 	// * read the cached file and return its contents
 
 	// cache preview thumbnails for a good while to lower load on this tiny
