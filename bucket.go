@@ -17,20 +17,13 @@ import (
 
 var ROOT = ""
 
-type FileTypeMapJSON struct {
-	MIME        string `json:"mime"`
+type FileInfoJSON struct {
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	ModifiedAt  string `json:"modified_at"`
+	MIMEType    string `json:"mime_type"`
 	IsDirectory bool   `json:"is_directory"`
 	IsHidden    bool   `json:"is_hidden"`
-	IsAudio     bool   `json:"is_audio"`
-	IsImage     bool   `json:"is_image"`
-	IsVideo     bool   `json:"is_video"`
-}
-
-type FileInfoJSON struct {
-	Name       string          `json:"name"`
-	Size       int64           `json:"size"`
-	ModifiedAt string          `json:"modified_at"`
-	Type       FileTypeMapJSON `json:"type"`
 }
 
 // returns a pair of (filename, MIME type) strings given a `file` output line
@@ -105,9 +98,10 @@ func getMIMEType(filePath string) string {
 	return strings.TrimSpace(string(fileOutput))
 }
 
-// normalizes the path using a root, and returns it. if the path exits the root
-// or is otherwise invalid, returns an error.
-func normalizePathToRoot(root, child string) (string, error) {
+// given a root and a relative child path, returns the normalized, absolute path
+// of the child. if the path is not a child of the root or is otherwise invalid,
+// returns an error.
+func normalizePathUnderRoot(root, child string) (string, error) {
 	// clean the path, resolving any ".."s in it
 	requestPath := path.Clean(path.Join(root, child))
 
@@ -125,7 +119,7 @@ func normalizePathToRoot(root, child string) (string, error) {
 func getInfo(w http.ResponseWriter, r *http.Request) {
 	// make sure our path is valid
 	rawPath := mux.Vars(r)["path"]
-	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
+	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -145,21 +139,16 @@ func getInfo(w http.ResponseWriter, r *http.Request) {
 		fileInfo.Name(),
 		fileInfo.Size(),
 		fileInfo.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
-		FileTypeMapJSON{
-			mimeType,
-			fileInfo.IsDir(),
-			strings.HasPrefix(fileInfo.Name(), "."),
-			strings.HasPrefix("audio/", mimeType),
-			strings.HasPrefix("image/", mimeType),
-			strings.HasPrefix("video/", mimeType),
-		},
+		mimeType,
+		fileInfo.IsDir(),
+		strings.HasPrefix(fileInfo.Name(), "."),
 	})
 }
 
 func download(w http.ResponseWriter, r *http.Request) {
 	// make sure our path is valid
 	rawPath := mux.Vars(r)["path"]
-	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
+	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -194,7 +183,7 @@ func downloadFile(w http.ResponseWriter, r *http.Request, filePath string, file 
 func getDirectory(w http.ResponseWriter, r *http.Request) {
 	// ensure the directory actually exists
 	rawPath := mux.Vars(r)["path"]
-	normalizedPath, err := normalizePathToRoot(ROOT, rawPath)
+	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -269,7 +258,7 @@ func main() {
 		panic("A root directory argument is required")
 	}
 
-	ROOT = os.Args[1]
+	ROOT = path.Clean(os.Args[1])
 
 	router := mux.NewRouter()
 
@@ -291,5 +280,7 @@ func main() {
 	router.HandleFunc("/thumbnails/{path:.*[^/]$}", getThumbnail).
 		Methods("GET")
 
-	http.ListenAndServe(":3000", router)
+	addr := "127.0.0.1:3000"
+	fmt.Printf("Serving %s to %s...\n", ROOT, addr)
+	http.ListenAndServe(addr, router)
 }
