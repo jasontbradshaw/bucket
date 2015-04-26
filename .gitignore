@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# compiled CLJS files
+ui/resources/scripts/compiled/*
+ui/*-init.clj*

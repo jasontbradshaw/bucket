@@ -1,10 +1,15 @@
 (ns bucket.core
   (:require-macros [cljs.core.async.macros :refer [go]])
-  (:require [clojure.string :as string]
+  (:require [figwheel.client :as figwheel]
+            [clojure.string :as string]
             [cljs.core.async :refer [put! chan <!]]
             [om.core :as om :include-macros true]
             [om-tools.core :refer-macros [defcomponent]]
             [sablono.core :as html :refer-macros [html]]))
+
+;; TODO: put these in a module that only gets loaded during dev mode
+(enable-console-print!)
+(figwheel/start)
 
 (defonce app (atom {
   ;; the list of files/folders to display
