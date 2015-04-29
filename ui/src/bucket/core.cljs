@@ -1,15 +1,18 @@
 (ns bucket.core
   (:require-macros [cljs.core.async.macros :refer [go]])
-  (:require [figwheel.client :as figwheel]
+  (:require [ajax.core :refer [GET POST]]
+            [figwheel.client :as figwheel]
             [clojure.string :as string]
             [cljs.core.async :refer [put! chan <!]]
+            [devtools.core :as devtools]
             [om.core :as om :include-macros true]
             [om-tools.core :refer-macros [defcomponent]]
             [sablono.core :as html :refer-macros [html]]))
 
 ;; TODO: put these in a module that only gets loaded during dev mode
 (enable-console-print!)
-(figwheel/start)
+(figwheel/start {:websocket-url "ws://localhost:3449/figwheel-ws"})
+(devtools/install!)
 
 (defonce app (atom {
   ;; the list of files/folders to display

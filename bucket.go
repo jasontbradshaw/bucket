@@ -379,6 +379,16 @@ func main() {
 	router.HandleFunc("/thumbnails/{path:.*[^/]$}", getThumbnail).
 		Methods("GET")
 
+	// /resources (static files)
+	router.HandleFunc("/resources/{path:.*}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "ui/resources/" + mux.Vars(r)["path"])
+	})
+
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "ui/resources/index.html")
+	})
+
+
 	addr := "127.0.0.1:3000"
 	fmt.Printf("Serving %s to %s...\n", ROOT, addr)
 	http.ListenAndServe(addr, router)
