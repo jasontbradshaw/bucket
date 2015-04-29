@@ -22,10 +22,17 @@
 ;; FIXME: remove this!
 (add-watch app :debug-watcher
            (fn [_ _ _ _]
-             (.log js/console (clj->js @app))))
+             (.log js/console app)))
 
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
+
+(GET "/files/"
+     {:handler #(om/update! (om/root-cursor app) :files %)
+      :format :json
+      :response-format :json
+      :keywords? true
+      :headers {"Content-Type" "application/json"}})
 
 (def ^:const id-alphabet "ABCDEFGHJKMNPQRSTVWXYZ0123456789")
 (defn generate-id
@@ -35,40 +42,13 @@
   ([length] (apply str (repeatedly length #(rand-nth id-alphabet)))))
 
 ;; a single file or folder
-(defcomponent file [component owner]
-  (render-state [this {:keys [delete]}]
-                (html [:div "file"])))
+(defcomponent file [file owner]
+  (render [this]
+          (html [:div {:class "file"} (:name file)])))
 
-(defcomponent file-list [app owner]
-  (init-state [_]
-    {:create (chan)
-     :delete (chan)})
+(defcomponent file-list [files owner]
+  (render [this]
+          (html [:div {:class "file-list"}
+                 (om/build-all file files)])))
 
-  (will-mount [_]
-    ;; listen for events that modify the files
-    (let [create (om/get-state owner :create)
-          delete (om/get-state owner :delete)]
-      ;; create
-      (go (loop []
-            (let [component (<! create)]
-              (om/transact! app :components
-                            (fn [components]
-                              ;; add the new component onto the list
-                              (conj components component))
-                            :create)
-              (recur))))
-      ;; delete
-      (go (loop []
-            (let [component (<! delete)]
-              (om/transact! app :components
-                            (fn [components]
-                              (vec (remove #(= component %) components)))
-                            :delete)
-              (recur))))))
-
-  (render-state [this {:keys [create delete]}]
-                (html [:div {:class "file-list"}
-                       (om/build-all file (:files app)
-                                     {:init-state {:delete delete}})])))
-
-(om/root file-list app {:target root})
+(om/root file-list (:files app) {:target root})
