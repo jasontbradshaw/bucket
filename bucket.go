@@ -26,7 +26,7 @@ type FileInfoJSON struct {
 	MIMEType    string `json:"mime_type"`
 	IsDirectory bool   `json:"is_directory"`
 	IsHidden    bool   `json:"is_hidden"`
-	IsSymlink   bool   `json:"is_symlink"`
+	IsLink      bool   `json:"is_link"`
 }
 
 // returns a pair of (filename, MIME type) strings given a `file` output line
