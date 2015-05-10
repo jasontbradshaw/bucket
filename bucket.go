@@ -384,7 +384,8 @@ func main() {
 		http.ServeFile(w, r, "ui/resources/"+mux.Vars(r)["path"])
 	})
 
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// fall through and serve everything to the root app
+	router.HandleFunc("/{path:.*}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui/resources/index.html")
 	})
 
