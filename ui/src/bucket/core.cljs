@@ -27,9 +27,9 @@
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
 
-;; parse the location from the URL and load the data for it. we always treat
-;; this as a folder to ensure we don't try to load a single item.
-(GET (str "/files/" (.. js/window -location -pathname) "/")
+;; chop the UI prefix off the path and use the rest as the actual path we want
+(def path (string/replace-first (.. js/window -location -pathname) #"/[^/]+" ""))
+(GET (str "/files/" path "/")
      {:handler #(swap! app-state assoc :files %)
       :format :json
       :response-format :json
