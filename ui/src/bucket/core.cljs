@@ -14,21 +14,21 @@
 (figwheel/start {:websocket-url "ws://localhost:3449/figwheel-ws"})
 (devtools/install!)
 
-(defonce app (atom {
-  ;; the list of files/folders to display
+(defonce app-state (atom {
+  ;; the list of files to display
   :files []
 }))
 
-;; FIXME: remove this!
-(add-watch app :debug-watcher
+;; show app state changes for simpler debugging
+(add-watch app-state :debug-watcher
            (fn [_ _ _ _]
-             (.log js/console app)))
+             (.log js/console "State:" app-state)))
 
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
 
 (GET "/files/"
-     {:handler #(om/update! (om/root-cursor app) :files %)
+     {:handler #(swap! app-state assoc :files %)
       :format :json
       :response-format :json
       :keywords? true
@@ -41,14 +41,15 @@
   ([] (generate-id 16))
   ([length] (apply str (repeatedly length #(rand-nth id-alphabet)))))
 
-;; a single file or folder
+;; a single file
 (defcomponent file [file owner]
   (render [this]
           (html [:div {:class "file"} (:name file)])))
 
-(defcomponent file-list [files owner]
+;; a list of files
+(defcomponent file-list [app-state owner]
   (render [this]
           (html [:div {:class "file-list"}
-                 (om/build-all file files)])))
+                 (om/build-all file (:files app-state))])))
 
-(om/root file-list (:files app) {:target root})
+(om/root file-list app-state {:target root})
