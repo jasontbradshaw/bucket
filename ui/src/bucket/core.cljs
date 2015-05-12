@@ -1,6 +1,6 @@
 (ns bucket.core
   (:require-macros [cljs.core.async.macros :refer [go]])
-  (:require [ajax.core :refer [GET POST]]
+  (:require [bucket.routes :as routes]
             [figwheel.client :as figwheel]
             [clojure.string :as string]
             [cljs.core.async :refer [put! chan <!]]
@@ -22,36 +22,33 @@
 ;; show app state changes for simpler debugging
 (add-watch app-state :debug-watcher
            (fn [_ _ _ _]
-             (.log js/console "State:" app-state)))
+             (.log js/console "State:" (clj->js @app-state))))
 
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
 
-;; chop the UI prefix off the path and use the rest as the actual path we want
-(def path (string/replace-first (.. js/window -location -pathname) #"/[^/]+" ""))
-(GET (str "/files/" path "/")
-     {:handler #(swap! app-state assoc :files %)
-      :format :json
-      :response-format :json
-      :keywords? true
-      :headers {"Content-Type" "application/json"}})
-
-(def ^:const id-alphabet "ABCDEFGHJKMNPQRSTVWXYZ0123456789")
-(defn generate-id
-  "Generates and returns a new Crockford-encoded random string of the given
-  length (default 16 characters)."
-  ([] (generate-id 16))
-  ([length] (apply str (repeatedly length #(rand-nth id-alphabet)))))
-
 ;; a single file
 (defcomponent file [file owner]
   (render [this]
-          (html [:div {:class "file"} (:name file)])))
+          (html [:div {:class "file"
+                       :data-mime-type (:mime_type file)}
+                  [:a {:href "#"
+                       :class "file-name"
+                       :on-click (fn [e]
+                                   (if (:is_directory file)
+                                     (do
+                                       (.preventDefault e)
+                                       (routes/navigate!
+                                         (str
+                                           (.. js/window -location -pathname)
+                                           "/"
+                                           (:name file))))))}
+                   (:name file)]])))
 
 ;; a list of files
 (defcomponent file-list [app-state owner]
   (render [this]
           (html [:div {:class "file-list"}
-                 (om/build-all file (:files app-state))])))
+                 (om/build-all file (:files app-state) {:key :name})])))
 
 (om/root file-list app-state {:target root})
