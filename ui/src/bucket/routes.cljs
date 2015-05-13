@@ -1,14 +1,23 @@
 (ns bucket.routes
-  (:require [bucket.path :as path]
+  (:require [ajax.core :refer [GET]]
             [bucket.history :as history]
-            [ajax.core :refer [GET]]
+            [bucket.path :as path]
+            [cljs.core.async :refer [put! chan]]
             [secretary.core :as secretary :refer-macros [defroute]]))
+
+(defn process-files [files]
+  "Given a list of files, processes them according to our preferences."
+  (->> files
+       (filter #(not (:is_hidden %)))
+       (sort-by #(.toLowerCase (:name %))) ; case-insensitive name sort
+       (sort-by #(if (:is_directory %) 0 1)) ; dirs first, then files
+       (into [])))
 
 ;; TODO: refactor to not modify global state from here!
 (defn update-files! [path]
   "Update the app state's `:files` key to the files under `path`."
   (GET (path/join "/files/" path "/")
-       {:handler #(swap! bucket.core/app-state assoc :files %)
+       {:handler #(swap! bucket.core/app-state assoc :files (process-files %))
         :format :json
         :response-format :json
         :keywords? true
@@ -34,7 +43,7 @@
        (secretary/dispatch! path)))))
 
 ;; configure and start history
-(defn dispatch-current-path! []
+(defn- dispatch-current-path! []
   "Dispatch to the current window pathname."
   (secretary/dispatch! (history/current-path)))
 
