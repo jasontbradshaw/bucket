@@ -2,22 +2,30 @@
   (:require [ajax.core :refer [GET]]
             [bucket.history :as history]
             [bucket.path :as path]
+            [bucket.state :as state]
+            [bucket.util :as util]
+            [clojure.string :as string]
             [cljs.core.async :refer [put! chan]]
             [secretary.core :as secretary :refer-macros [defroute]]))
 
 (defn process-files [files]
   "Given a list of files, processes them according to our preferences."
   (->> files
-       (filter #(not (:is_hidden %)))
-       (sort-by #(.toLowerCase (:name %))) ; case-insensitive name sort
-       (sort-by #(if (:is_directory %) 0 1)) ; dirs first, then files
+       ;; remove hidden files if specified
+       (filter #(or (:show-hidden @state/global) (not (:is_hidden %))))
+
+       ;; sort by name, case-insensitively and using alphanum
+       (sort-by #(util/str->alphanum (string/lower-case (:name %))))
+
+       ;; sort directories before "normal" files
+       (sort-by #(if (:is_directory %) 0 1))
+
        (into [])))
 
-;; TODO: refactor to not modify global state from here!
 (defn update-files! [path]
-  "Update the app state's `:files` key to the files under `path`."
+  "Update the global state's `:files` key to the files under `path`."
   (GET (path/join "/files/" path "/")
-       {:handler #(swap! bucket.core/app-state assoc :files (process-files %))
+       {:handler #(swap! state/global assoc :files (process-files %))
         :format :json
         :response-format :json
         :keywords? true

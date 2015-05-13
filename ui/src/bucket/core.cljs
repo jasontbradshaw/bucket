@@ -3,6 +3,7 @@
   (:require [bucket.routes :as routes]
             [bucket.history :as history]
             [bucket.path :as path]
+            [bucket.state :as state]
             [figwheel.client :as figwheel]
             [cljs.core.async :refer [put! chan <!]]
             [devtools.core :as devtools]
@@ -14,16 +15,6 @@
 (enable-console-print!)
 (figwheel/start {:websocket-url "ws://localhost:3449/figwheel-ws"})
 (devtools/install!)
-
-(defonce app-state (atom {
-  ;; the list of files to display
-  :files []
-}))
-
-;; show app state changes for simpler debugging
-(add-watch app-state :debug-watcher
-           (fn [_ _ _ _]
-             (.log js/console "State:" @app-state)))
 
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
@@ -50,9 +41,9 @@
               (:name file)])])))
 
 ;; a list of files
-(defcomponent file-list [app-state owner]
+(defcomponent file-list [global owner]
   (render [this]
           (html [:div {:class "file-list"}
-                 (om/build-all file (:files app-state) {:key :name})])))
+                 (om/build-all file (:files global) {:key :name})])))
 
-(om/root file-list app-state {:target root})
+(om/root file-list state/global {:target root})
