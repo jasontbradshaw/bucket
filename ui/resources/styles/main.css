@@ -38,6 +38,12 @@ body {
   padding: 0 0.75em 0 0.75em;
 }
 
+.file-icon {
+  height: 14px;
+  vertical-align: -1px;
+  margin-right: 0.5em;
+}
+
 .file-name {
   color: inherit;
   text-decoration: none;

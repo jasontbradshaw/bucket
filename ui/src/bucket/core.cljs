@@ -33,6 +33,10 @@
   (render [this]
     (html [:div {:class "file"
                  :data-mime-type (:mime_type file)}
+           [:img {:class "file-icon"
+                  :src (if (:is_directory file)
+                         "/resources/images/folder-o.svg"
+                         "/resources/images/file-o.svg")}]
            (let [link (path/join (history/current-path)
                                  (str (:name file)
                                       (if (:is_directory file) "/" "")))]
