@@ -57,6 +57,5 @@
 
 ;; listen for state change events and dispatch when they happen
 (defonce setup
-  (do
-    (.addEventListener js/window "popstate" dispatch-current-path!)
-    (dispatch-current-path!)))
+  (.addEventListener js/window "popstate" dispatch-current-path!))
+(dispatch-current-path!)
