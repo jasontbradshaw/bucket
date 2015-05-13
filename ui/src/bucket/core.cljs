@@ -1,8 +1,9 @@
 (ns bucket.core
   (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [bucket.routes :as routes]
+            [bucket.history :as history]
+            [bucket.path :as path]
             [figwheel.client :as figwheel]
-            [clojure.string :as string]
             [cljs.core.async :refer [put! chan <!]]
             [devtools.core :as devtools]
             [om.core :as om :include-macros true]
@@ -22,7 +23,7 @@
 ;; show app state changes for simpler debugging
 (add-watch app-state :debug-watcher
            (fn [_ _ _ _]
-             (.log js/console "State:" (clj->js @app-state))))
+             (.log js/console "State:" @app-state)))
 
 ;; the root element of our application
 (defonce root (.querySelector js/document "main"))
@@ -30,20 +31,19 @@
 ;; a single file
 (defcomponent file [file owner]
   (render [this]
-          (html [:div {:class "file"
-                       :data-mime-type (:mime_type file)}
-                  [:a {:href "#"
-                       :class "file-name"
-                       :on-click (fn [e]
-                                   (if (:is_directory file)
-                                     (do
-                                       (.preventDefault e)
-                                       (routes/navigate!
-                                         (str
-                                           (.. js/window -location -pathname)
-                                           "/"
-                                           (:name file))))))}
-                   (:name file)]])))
+    (html [:div {:class "file"
+                 :data-mime-type (:mime_type file)}
+           (let [link (path/join (history/current-path)
+                                 (str (:name file)
+                                      (if (:is_directory file) "/" "")))]
+             [:a {:href link
+                  :class "file-name"
+                  :on-click (fn [e]
+                              (if (:is_directory file)
+                                (do
+                                  (.preventDefault e)
+                                  (routes/navigate! link))))}
+              (:name file)])])))
 
 ;; a list of files
 (defcomponent file-list [app-state owner]

@@ -22,6 +22,17 @@ body {
   border: 1px solid #e5e5e5;
 }
 
+.file-list:empty:after {
+  display: block;
+  content: 'Empty';
+
+  font-style: italic;
+  font-weight: 300;
+  text-align: center;
+
+  line-height: 2.5;
+}
+
 .file {
   line-height: 2.5;
   padding: 0 0.75em 0 0.75em;

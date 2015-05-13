@@ -1,11 +1,13 @@
 (ns bucket.routes
-  (:require [bucket.history :as history]
+  (:require [bucket.path :as path]
+            [bucket.history :as history]
             [ajax.core :refer [GET]]
             [secretary.core :as secretary :refer-macros [defroute]]))
 
+;; TODO: refactor to not modify global state from here!
 (defn update-files! [path]
   "Update the app state's `:files` key to the files under `path`."
-  (GET (str "/files/" path "/")
+  (GET (path/join "/files/" path "/")
        {:handler #(swap! bucket.core/app-state assoc :files %)
         :format :json
         :response-format :json
@@ -13,7 +15,6 @@
         :headers {"Content-Type" "application/json"}}))
 
 (defroute home-path #"/home(.*)" [path]
-  (.log js/console "path:" path)
   (update-files! path))
 
 (defn navigate!
@@ -23,21 +24,22 @@
           :or {replace false
                state nil
                trigger true
-               title (.-title js/document)}}]
-   (if replace
-     (history/replace-state! state title path)
-     (history/push-state! state title path))
-   (if trigger
-     (secretary/dispatch! path))))
-
-(defn redirect! [path]
-  "Transparently redirect the history to a new URL, leaving history alone."
-  (navigate! path {:replace true :trigger true}))
+               title (history/current-title)}}]
+   (let [change-state! (if replace
+                        history/replace-state!
+                        history/push-state!)
+         path (path/join path)]
+     (change-state! state title path)
+     (if trigger
+       (secretary/dispatch! path)))))
 
 ;; configure and start history
-(defonce history-event
-  (.addEventListener js/window "popstate"
-                     #(secretary/dispatch! (.. js/window -location -pathname))))
+(defn dispatch-current-path! []
+  "Dispatch to the current window pathname."
+  (secretary/dispatch! (history/current-path)))
 
-;; immediately go to the current state
-(secretary/dispatch! (.. js/window -location -pathname))
+;; listen for state change events and dispatch when they happen
+(defonce setup
+  (do
+    (.addEventListener js/window "popstate" dispatch-current-path!)
+    (dispatch-current-path!)))

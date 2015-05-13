@@ -1,17 +1,17 @@
 (ns bucket.history
   "A lightweight wrapper around js/history")
 
-(defn- current-title []
-  "The current document title."
-  (.-title js/document))
-
-(defn- current-url []
-  "The current history URL."
-  (.. js/window -history -current))
-
 (defn- current-state []
   "The raw value of the current history state."
   (.-state js/history))
+
+(defn current-title []
+  "The current document title."
+  (.-title js/document))
+
+(defn current-path []
+  "The current path of the window excluding hostname and including leading `/`."
+  (.. js/window -location -pathname))
 
 (defn back! [] (.back js/history))
 (defn forward! [] (.forward js/history))
@@ -19,17 +19,17 @@
 
 (defn replace-state!
   ([state]
-     (replace-state! state (current-title) (current-url)))
+     (replace-state! state (current-title) (current-path)))
   ([state title]
-     (replace-state! state title (current-url)))
+     (replace-state! state title (current-path)))
   ([state title path]
      (.replaceState js/history state title path)))
 
 (defn push-state!
   ([state]
-     (push-state! state (current-title) (current-url)))
+     (push-state! state (current-title) (current-path)))
   ([state title]
-     (push-state! state title (current-url)))
+     (push-state! state title (current-path)))
   ([state title path]
      (.pushState js/history state title path)))
 
