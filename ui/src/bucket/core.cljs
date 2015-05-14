@@ -5,16 +5,16 @@
             [bucket.path :as path]
             [bucket.state :as state]
             [bucket.util :as util]
-            [figwheel.client :as figwheel]
             [cljs.core.async :refer [put! chan <!]]
             [devtools.core :as devtools]
-            [om.core :as om :include-macros true]
             [om-tools.core :refer-macros [defcomponent]]
+            [om.core :as om :include-macros true]
             [sablono.core :as html :refer-macros [html]]))
 
-;; TODO: put these in a module that only gets loaded during dev mode
+;; turn console.log into the default print function
 (enable-console-print!)
-(figwheel/start {:websocket-url "ws://localhost:3449/figwheel-ws"})
+
+;; TODO: put this in a module that only gets loaded during dev mode
 (devtools/install!)
 
 ;; a single file
