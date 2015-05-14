@@ -4,6 +4,7 @@
             [bucket.history :as history]
             [bucket.path :as path]
             [bucket.state :as state]
+            [bucket.util :as util]
             [figwheel.client :as figwheel]
             [cljs.core.async :refer [put! chan <!]]
             [devtools.core :as devtools]
@@ -16,18 +17,13 @@
 (figwheel/start {:websocket-url "ws://localhost:3449/figwheel-ws"})
 (devtools/install!)
 
-;; the root element of our application
-(defonce root (.querySelector js/document "main"))
-
 ;; a single file
 (defcomponent file [file owner]
   (render [this]
     (html [:div {:class "file"
                  :data-mime-type (:mime_type file)}
            [:img {:class "file-icon"
-                  :src (if (:is_directory file)
-                         "/resources/images/folder-o.svg"
-                         "/resources/images/file-o.svg")}]
+                  :src (util/icon-path-for-mime-type (:mime_type file))}]
            (let [link (path/join (history/current-path)
                                  (str (:name file)
                                       (if (:is_directory file) "/" "")))]
@@ -46,4 +42,6 @@
           (html [:div {:class "file-list"}
                  (om/build-all file (:files global) {:key :name})])))
 
+;; start the app
+(defonce root (.querySelector js/document "main"))
 (om/root file-list state/global {:target root})
