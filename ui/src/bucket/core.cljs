@@ -23,7 +23,7 @@
     (html [:div {:class "file"
                  :data-mime-type (:mime_type file)}
            [:img {:class "file-icon"
-                  :src (util/icon-path-for-mime-type (:mime_type file))}]
+                  :src (util/icon-path-for-file file)}]
            (let [link (path/join (history/current-path)
                                  (str (:name file)
                                       (if (:is_directory file) "/" "")))]

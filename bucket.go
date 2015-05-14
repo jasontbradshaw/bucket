@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
+	"mime"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -29,19 +28,6 @@ type FileInfoJSON struct {
 	IsLink      bool   `json:"is_link"`
 }
 
-// returns a pair of (filename, MIME type) strings given a `file` output line
-func parseMIMEType(fileOutputLine string) (string, string, error) {
-	// parse the file program output into a bare MIME type
-	mimeString := strings.TrimSpace(fileOutputLine)
-	splitIndex := strings.LastIndex(mimeString, ":")
-
-	if len(fileOutputLine) <= 1 || splitIndex <= 0 {
-		return "", "", fmt.Errorf("Invalid MIME string: '%s'", fileOutputLine)
-	}
-
-	return mimeString[0:splitIndex], strings.TrimSpace(mimeString[splitIndex+1:]), nil
-}
-
 func writeJSONResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Add("Content-Type", "application/json")
 	w.Header().Add("Cache-Control", "no-cache")
@@ -54,51 +40,14 @@ func writeJSONResponse(w http.ResponseWriter, data interface{}) {
 	w.Write(json)
 }
 
-// given a path, returns a map of child name to MIME type
-func getChildMIMETypes(parentPath string) map[string]string {
-	result := make(map[string]string)
-
-	// get all the children in the given directory
-	children, err := filepath.Glob(path.Join(parentPath, "*"))
-	if err != nil {
-		return result
-	}
-
-	args := []string{"--mime-type", "--dereference", "--preserve-date"}
-	args = append(args, children...)
-
-	// call `file` for a newline-delimited list of "filename: MIME-type" pairs
-	fileOutput, err := exec.Command("file", args...).Output()
-
-	if err != nil {
-		return result
-	}
-
-	for _, line := range strings.Split(string(fileOutput), "\n") {
-		fileName, mimeType, err := parseMIMEType(line)
-		if err == nil {
-			result[fileName] = mimeType
-		}
-	}
-
-	return result
-}
-
+// given a file name, returns a MIME type based on its extension
 func getMIMEType(filePath string) string {
-	fileOutput, err := exec.Command(
-		"file",
-		"--mime-type",
-		// "--dereference",
-		"--preserve-date",
-		"--brief",
-		filePath,
-	).Output()
-
-	if err != nil {
+	dotIndex := strings.LastIndex(filePath, ".")
+	if dotIndex < 0 {
 		return ""
 	}
 
-	return strings.TrimSpace(string(fileOutput))
+	return mime.TypeByExtension(filePath[dotIndex:])
 }
 
 // given a root and a relative child path, returns the normalized, absolute path
@@ -200,20 +149,15 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get a map of all the MIME types for the directory
-	mimeTypes := getChildMIMETypes(normalizedPath)
-
 	// list the directory to a JSON response
 	var files []FileInfoJSON
 	for _, file := range children {
 		fileName := file.Name()
-		mimeType := mimeTypes[path.Join(normalizedPath, fileName)]
-
 		files = append(files, FileInfoJSON{
 			fileName,
 			file.Size(),
 			file.ModTime().Format("2006-01-02T15:04:05Z"), // ISO 8601
-			mimeType,
+			getMIMEType(fileName),
 			file.IsDir(),
 			strings.HasPrefix(fileName, "."), // hidden?
 			file.Mode()&os.ModeSymlink == os.ModeSymlink,
@@ -345,14 +289,6 @@ func getThumbnail(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// ensure we have all the binaries we need
-	requiredBinaries := []string{"file"}
-	for _, binary := range requiredBinaries {
-		if _, err := exec.LookPath(binary); err != nil {
-			log.Panicf("'%s' must be installed and in the PATH\n", binary)
-		}
-	}
-
 	if len(os.Args) <= 1 {
 		panic("A root directory argument is required")
 	}
