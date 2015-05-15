@@ -23,6 +23,7 @@ nav {
   padding: 0 1em;
 
   line-height: 3;
+  white-space: nowrap;
 
   background-color: #222222;
   color: white;
@@ -31,6 +32,7 @@ nav {
 .nav-breadcrumb {
   color: white;
   text-decoration: none;
+  vertical-align: middle;
 }
 .nav-breadcrumb:visited {
   color: white;
@@ -41,7 +43,9 @@ nav {
 }
 
 .nav-breadcrumb-separator {
-  margin: 0 0.5em;
+  vertical-align: middle;
+  margin: 0 0.3em;
+  height: 1.25em;
 }
 
 .file-list {

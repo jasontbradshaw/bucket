@@ -24,7 +24,6 @@
       (let [link (:href path-segment)]
         [:a {:class "nav-breadcrumb"
              :href link
-             :title link
              :on-click (fn [e]
                          (do
                            (.preventDefault e)
@@ -35,7 +34,8 @@
   (render [this]
     (html
       [:div {:class "nav-breadcrumbs"}
-       (interpose [:span {:class "nav-breadcrumb-separator"} "·"]
+       (interpose [:img {:class "nav-breadcrumb-separator"
+                         :src "/resources/images/angle-right.svg"}]
                   (om/build-all nav-breadcrumb segments {:key :href}))])))
 
 
