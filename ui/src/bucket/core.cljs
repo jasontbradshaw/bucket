@@ -39,14 +39,22 @@
                                 (do
                                   (.preventDefault e)
                                   (routes/navigate! link))))}
+              [:img {:class "file-icon"
+                     :src (util/icon-path-for-file file)}]
               (:name file)])])))
 
-;; a list of files
-(defcomponent file-list [global owner]
+(defcomponent file-list [files owner]
   (render [this]
           (html [:div {:class "file-list"}
-                 (om/build-all file (:files global) {:key :name})])))
+                 (om/build-all file files {:key :name})])))
+
+(defcomponent app [global owner]
+  (render [this]
+    (html
+      [:main
+       (om/build nav global)
+       (om/build file-list (:files global))])))
 
 ;; start the app
-(defonce root (.querySelector js/document "main"))
-(om/root file-list state/global {:target root})
+(defonce root (.querySelector js/document "body"))
+(om/root app state/global {:target root})
