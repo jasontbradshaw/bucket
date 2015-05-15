@@ -6,6 +6,7 @@
             [bucket.state :as state]
             [bucket.util :as util]
             [cljs.core.async :refer [put! chan <!]]
+            [clojure.string :as string]
             [devtools.core :as devtools]
             [om-tools.core :refer-macros [defcomponent]]
             [om.core :as om :include-macros true]
@@ -17,16 +18,20 @@
 ;; TODO: put this in a module that only gets loaded during dev mode
 (devtools/install!)
 
-;; a single file
+;; the overall app navigation bar
+(defcomponent nav [nav owner]
+  (render [this]
+    (html [:nav])))
+
 (defcomponent file [file owner]
   (render [this]
     (html [:div {:class "file"
                  :data-mime-type (:mime_type file)}
-           [:img {:class "file-icon"
-                  :src (util/icon-path-for-file file)}]
-           (let [link (path/join (history/current-path)
-                                 (str (:name file)
-                                      (if (:is_directory file) "/" "")))]
+           (let [link (if (:is_directory file)
+                        (path/join (history/current-path) (:name file) "/")
+                        (string/replace
+                          (path/join (history/current-path) (:name file))
+                          #"^/home/" "/files/"))]
              [:a {:href link
                   :class "file-name"
                   :on-click (fn [e]
