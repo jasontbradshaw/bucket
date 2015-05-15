@@ -11,6 +11,37 @@ body {
   color: #222222;
 
   padding: 1em;
+  padding-top: 4em;
+}
+
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+
+  padding: 0 1em;
+
+  line-height: 3;
+
+  background-color: #222222;
+  color: white;
+}
+
+.nav-breadcrumb {
+  color: white;
+  text-decoration: none;
+}
+.nav-breadcrumb:visited {
+  color: white;
+}
+.nav-breadcrumb:hover, .nav-breadcrumb:focus {
+  text-decoration: underline;
+  color: #00aaee;
+}
+
+.nav-breadcrumb-separator {
+  margin: 0 0.5em;
 }
 
 .file-list {

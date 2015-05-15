@@ -2,6 +2,9 @@
 
 ;; the global state for the entire app
 (defonce global (atom {
+  ;; the current path's string segments, implicitly surrounded/separated by `/`
+  :path []
+
   ;; the list of files to display
   :files []
 

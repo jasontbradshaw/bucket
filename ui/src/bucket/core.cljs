@@ -18,10 +18,32 @@
 ;; TODO: put this in a module that only gets loaded during dev mode
 (devtools/install!)
 
-;; the overall app navigation bar
-(defcomponent nav [nav owner]
+(defcomponent nav-breadcrumb [path-segment owner]
   (render [this]
-    (html [:nav])))
+    (html
+      (let [link (:href path-segment)]
+        [:a {:class "nav-breadcrumb"
+             :href link
+             :title link
+             :on-click (fn [e]
+                         (do
+                           (.preventDefault e)
+                           (routes/navigate! link)))}
+         (:name path-segment)]))))
+
+(defcomponent nav-breadcrumbs [segments owner]
+  (render [this]
+    (html
+      [:div {:class "nav-breadcrumbs"}
+       (interpose [:span {:class "nav-breadcrumb-separator"} "·"]
+                  (om/build-all nav-breadcrumb segments {:key :href}))])))
+
+
+;; the overall app navigation bar
+(defcomponent nav [segments owner]
+  (render [this]
+    (html [:nav
+            (om/build nav-breadcrumbs segments)])))
 
 (defcomponent file [file owner]
   (render [this]
@@ -52,7 +74,7 @@
   (render [this]
     (html
       [:main
-       (om/build nav global)
+       (om/build nav (:path global))
        (om/build file-list (:files global))])))
 
 ;; start the app

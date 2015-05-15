@@ -22,17 +22,23 @@
 
        (into [])))
 
-(defn update-files! [path]
-  "Update the global state's `:files` key to the files under `path`."
-  (GET (path/join "/files/" path "/")
-       {:handler #(swap! state/global assoc :files (process-files %))
+(defn update-files-and-path! [p]
+  "Update the global state's `:files` key to the files under `p`, and set
+   `:path` to the segments of the given path."
+  (GET (path/join "/files/" p "/")
+       {:handler (fn [files]
+                   (swap! state/global
+                          (fn [s]
+                            ;; update the path and the files for the path
+                            (assoc s :files (process-files files)
+                                     :path (path/segmentize p)))))
         :format :json
         :response-format :json
         :keywords? true
         :headers {"Content-Type" "application/json"}}))
 
 (defroute home-path #"/home(.*)" [path]
-  (update-files! path))
+  (update-files-and-path! path))
 
 (defn navigate!
   "Navigate the history to a new URL."
