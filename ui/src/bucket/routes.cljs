@@ -10,17 +10,8 @@
 
 (defn process-files [files]
   "Given a list of files, processes them according to our preferences."
-  (->> files
-       ;; remove hidden files if specified
-       (filter #(or (:show-hidden @state/global) (not (:is_hidden %))))
-
-       ;; sort by name, case-insensitively and using alphanum
-       (sort-by #(util/str->alphanum (string/lower-case (:name %))))
-
-       ;; sort directories before "normal" files
-       (sort-by #(if (:is_directory %) 0 1))
-
-       (into [])))
+  (let [show-hidden (:show-hidden @state/global)]
+    (filterv #(or show-hidden (not (:is_hidden %))) files)))
 
 (defn update-files-and-path! [p]
   "Update the global state's `:files` key to the files under `p`, and set

@@ -38,7 +38,6 @@
                          :src "/resources/images/angle-right.svg"}]
                   (om/build-all nav-breadcrumb segments {:key :href}))])))
 
-
 ;; the overall app navigation bar
 (defcomponent nav [segments owner]
   (render [this]

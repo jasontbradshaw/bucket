@@ -12,7 +12,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 )
@@ -28,6 +32,98 @@ type FileInfoJSON struct {
 	IsDirectory bool   `json:"is_directory"`
 	IsHidden    bool   `json:"is_hidden"`
 	IsLink      bool   `json:"is_link"`
+}
+
+type FileInfoJSONSorted []FileInfoJSON
+
+func (f FileInfoJSONSorted) Len() int      { return len(f) }
+func (f FileInfoJSONSorted) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
+func (f FileInfoJSONSorted) Less(i, j int) bool {
+	fI := f[i]
+	fJ := f[j]
+
+	// directories always come before regular files
+	if fI.IsDirectory && !fJ.IsDirectory {
+		return true
+	} else if !fI.IsDirectory && fJ.IsDirectory {
+		return false
+	}
+
+	// split the strings into non-digit/digit sections
+	nameI := strings.ToLower(fI.Name)
+	nameJ := strings.ToLower(fJ.Name)
+	segmentsI := partitionByDigitness(nameI)
+	segmentsJ := partitionByDigitness(nameJ)
+	minLen := len(segmentsI)
+	if len(segmentsJ) < minLen {
+		minLen = len(segmentsJ)
+	}
+
+	// compare each segment against its matching partner
+	for i := 0; i < minLen; i++ {
+		sI := segmentsI[i]
+		sJ := segmentsJ[i]
+
+		if sI != sJ {
+			// get the first rune in each string so we can check whether it's a digit
+			rI, _ := utf8.DecodeRuneInString(sI)
+			rJ, _ := utf8.DecodeRuneInString(sJ)
+
+			// if both chunks are digit-only, compare them numerically
+			if unicode.IsDigit(rI) && unicode.IsDigit(rJ) {
+				iI, errI := strconv.ParseUint(sI, 10, 64)
+				iJ, errJ := strconv.ParseUint(sJ, 10, 64)
+
+				// if we got an error for either string, compare lexicographically. this
+				// isn't ideal, but it covers most cases since an unsigned long is no
+				// less than 18 digits in length!
+				if errI != nil || errJ != nil {
+					return sort.StringsAreSorted([]string{sI, sJ})
+				}
+
+				// if they're not equal, return the comparison
+				if iI != iJ {
+					return iI < iJ
+				}
+			} else {
+				// otherwise, do a lexicographic comparison
+				return sort.StringsAreSorted([]string{sI, sJ})
+			}
+		}
+	}
+
+	// if all the segments we could directly compare are equal, do a lexicographic
+	// comparison on the names.
+	return sort.StringsAreSorted([]string{nameI, nameJ})
+}
+
+// given a string, returns an array of strings where each item is either
+// digits-only or non-digits-only. if the string is either all-digit or
+// no-digit, returns a single-item array of the input string.
+func partitionByDigitness(s string) []string {
+	result := []string{}
+	cur := ""
+	lastWasDigit := false
+
+	for _, c := range s {
+		if len(cur) == 0 {
+			// only true on the first iteration
+			cur = string(c)
+			lastWasDigit = unicode.IsDigit(c)
+		} else if unicode.IsDigit(c) != lastWasDigit {
+			// we just hit an edge, so add our current section to the list and start
+			// a new one with this character.
+			result = append(result, cur)
+			cur = string(c)
+			lastWasDigit = unicode.IsDigit(c)
+		} else {
+			cur = cur + string(c)
+		}
+	}
+
+	result = append(result, cur)
+
+	return result
 }
 
 // a map of lowercase file extensions, including leading `.`, to whether they're
@@ -55,7 +151,7 @@ func isSourceCode(fileName string) bool {
 		// read every line into our map of source code extensions
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
-			CODE_EXTS["." + strings.ToLower(strings.TrimSpace(scanner.Text()))] = true
+			CODE_EXTS["."+strings.ToLower(strings.TrimSpace(scanner.Text()))] = true
 		}
 	}
 
@@ -201,6 +297,9 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 			file.Mode()&os.ModeSymlink == os.ModeSymlink,
 		})
 	}
+
+	// sort the files by our special sort order
+	sort.Sort(FileInfoJSONSorted(files))
 
 	writeJSONResponse(w, files)
 }
