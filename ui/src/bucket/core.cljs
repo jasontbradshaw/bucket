@@ -46,7 +46,8 @@
 
 (defcomponent file [file owner]
   (render [this]
-    (html [:div {:class "file"}
+    (html [:div {:class "file"
+                 :data-mime-type (:mime_type file)}
            (let [link (if (:is_directory file)
                         (path/join (history/current-path) (:name file) "/")
                         (string/replace
@@ -59,8 +60,12 @@
                                 (do
                                   (.preventDefault e)
                                   (routes/navigate! link))))}
-              [:img {:class "file-icon"
-                     :src (util/icon-path-for-file file)}]
+              (if (re-find #"^(?:image|video)/" (:mime_type file))
+                [:div {:class "file-thumbnail"
+                       :style {:background-image
+                               (str "url(" (util/thumbnail-path-for-file file) ")")}}]
+                [:img {:class "file-icon"
+                       :src (util/icon-path-for-file file)}])
               (:name file)])])))
 
 (defcomponent file-list [files owner]

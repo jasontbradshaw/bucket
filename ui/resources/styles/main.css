@@ -70,7 +70,7 @@ nav {
 
 .file {
   line-height: 3;
-  padding: 0 1em 0 1em;
+  padding: 0 1em;
 
   overflow: hidden;
   white-space: nowrap;
@@ -81,6 +81,21 @@ nav {
   height: 14px;
   vertical-align: -1px;
   margin-right: 0.65em;
+}
+
+.file-thumbnail {
+  display: inline-block;
+
+  width: 28px;
+  height: 28px;
+
+  vertical-align: middle;
+  margin-right: 0.65em;
+  margin-left: -0.35em;
+
+  background-size: cover;
+  background-position: center;
+  background-color: #e5e5e5;
 }
 
 .file-name {

@@ -3,13 +3,17 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -202,7 +206,11 @@ func normalizePathUnderRoot(root, child string) (string, error) {
 // this returns the info for the specified files _or_ directory, not just files
 func getInfo(w http.ResponseWriter, r *http.Request) {
 	// make sure our path is valid
-	rawPath := mux.Vars(r)["path"]
+	rawPath, err := url.QueryUnescape(mux.Vars(r)["path"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -213,7 +221,7 @@ func getInfo(w http.ResponseWriter, r *http.Request) {
 	fileInfo, err := os.Stat(normalizedPath)
 	if err != nil {
 		// don't report the raw error in case we leak server directory information
-		http.Error(w, "", 404)
+		http.Error(w, "Could not find "+rawPath, 404)
 		return
 	}
 
@@ -233,7 +241,11 @@ func getInfo(w http.ResponseWriter, r *http.Request) {
 
 func download(w http.ResponseWriter, r *http.Request) {
 	// make sure our path is valid
-	rawPath := mux.Vars(r)["path"]
+	rawPath, err := url.QueryUnescape(mux.Vars(r)["path"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -245,7 +257,7 @@ func download(w http.ResponseWriter, r *http.Request) {
 	file, err := os.Stat(normalizedPath)
 	if err != nil {
 		// don't report the raw error in case we leak server directory information
-		http.Error(w, "", 404)
+		http.Error(w, "Could not find "+rawPath, 404)
 		return
 	}
 
@@ -268,7 +280,11 @@ func downloadFile(w http.ResponseWriter, r *http.Request, filePath string, file 
 
 func getDirectory(w http.ResponseWriter, r *http.Request) {
 	// ensure the directory actually exists
-	rawPath := mux.Vars(r)["path"]
+	rawPath, err := url.QueryUnescape(mux.Vars(r)["path"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -278,7 +294,7 @@ func getDirectory(w http.ResponseWriter, r *http.Request) {
 	children, err := ioutil.ReadDir(normalizedPath)
 	if err != nil {
 		// don't report the raw error in case we leak server directory information
-		http.Error(w, "", 404)
+		http.Error(w, "Could not find "+rawPath, 404)
 		return
 	}
 
@@ -407,25 +423,88 @@ func downloadDirectory(w http.ResponseWriter, r *http.Request, dirPath string) {
 	})
 }
 
-// retrieves/caches/updates a thumbnail file given a path, or returns an error
-// if no thumbnail could be geneated.
+// generates a thumbnail file given a path, or returns an error if no thumbnail
+// could be generated.
 func getThumbnail(w http.ResponseWriter, r *http.Request) {
-	// TODO:
-	// * look up the parent file to get its modtime and ensure it exists
-	// * see if we have a cached file with the same modtime
-	// ** if so, use it
-	// ** otherwise, generate a preview
-	// *** use graphicsmagick/ffmpeg to generate a preview thumbnail
-	// *** store the thumbnail to a mirrored path with the filename plus the modtime
-	// * read the cached file and return its contents
+	rawPath, err := url.QueryUnescape(mux.Vars(r)["path"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	normalizedPath, err := normalizePathUnderRoot(ROOT, rawPath)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 
-	// cache preview thumbnails for a good while to lower load on this tiny
-	// server, even if we are caching the preview thumbnails on-disk too.
+	// ensure the file exists
+	_, err = os.Stat(normalizedPath)
+	if err != nil {
+		// don't report the raw error in case we leak server directory information
+		http.Error(w, "Could not find "+rawPath, 404)
+		return
+	}
+
+	// tell the browser to cache this response for a good while to lower load
 	w.Header().Add("Cache-Control", "max-age=3600")
+
+	// get the file's MIME type so we can see what it is
+	mimeType := getMIMEType(normalizedPath)
+
+	var cmd *exec.Cmd
+	size := "256"
+	if mimeType == "image/svg+xml" {
+		// simply return the image as-is if it's an SVG image
+		http.ServeFile(w, r, normalizedPath)
+		return
+	} else if strings.Index(mimeType, "image") == 0 {
+		// generate a JPEG thumbnail for the image using GraphicsMagick
+		cmd = exec.Command(
+			"gm", "convert",
+			"-size", size+"x"+size,
+			normalizedPath,
+			"-geometry", size+"x"+size+"^",
+			"+profile", "\"*\"",
+			"jpeg:-",
+		)
+	} else if strings.Index(mimeType, "video") == 0 {
+		// generate a JPEG thumbnail for the image using ffmpeg
+		cmd = exec.Command(
+			"ffmpeg",
+			"-i", normalizedPath,
+			"-vf", "thumbnail,scale=-1:"+size,
+			"-frames:v", "1",
+			"-f", "mjpeg",
+			"-",
+		)
+	} else {
+		// HTTP 415 - Unsupported Media Type
+		http.Error(w, "Unsupported file type: "+mimeType, 415)
+		return
+	}
+
+	// run the command we created above and get its JPEG output
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
 	w.Header().Add("Content-Type", "image/jpeg")
+	w.Write(out.Bytes())
 }
 
 func main() {
+	// ensure we have all the binaries we need
+	requiredBinaries := []string{"gm", "ffmpeg"}
+	for _, binary := range requiredBinaries {
+		if _, err := exec.LookPath(binary); err != nil {
+			log.Panicf("'%s' must be installed and in the PATH\n", binary)
+		}
+	}
+
 	if len(os.Args) <= 1 {
 		panic("A root directory argument is required")
 	}

@@ -1,10 +1,12 @@
 (ns bucket.util
-  (:require [clojure.string :as string]
+  (:require [bucket.path :as path]
+            [bucket.history :as history]
+            [clojure.string :as string]
             [cljs.reader :refer [read-string]]))
 
 (defn- icon-path [s]
   "Returns a path to the icon with the given name."
-  (str "/resources/images/" s ".svg"))
+  (js/encodeURI (str "/resources/images/" s ".svg")))
 
 (defn- icon-path-for-mime-type [t]
   "Given a MIME type string, returns the path to an appropriate icon image."
@@ -23,3 +25,10 @@
   (cond (:is_directory f) (icon-path "folder")
         (:is_code f) (icon-path "file-code")
         :else (icon-path-for-mime-type (:mime_type f))))
+
+(defn thumbnail-path-for-file [f]
+  "Given a file, returns the path to an appropriate thumbnail image for it."
+  (js/encodeURI
+    (string/replace
+      (path/join (history/current-path) (:name f))
+      #"^/home/" "/thumbnails/")))
