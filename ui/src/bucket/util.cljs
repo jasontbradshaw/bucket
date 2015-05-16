@@ -38,6 +38,6 @@
 
 (defn icon-path-for-file [f]
   "Given a file, returns the path to an appropriate icon image for it."
-  (if (:is_directory f)
-    (icon-path "folder")
-    (icon-path-for-mime-type (:mime_type f))))
+  (cond (:is_directory f) (icon-path "folder")
+        (:is_code f) (icon-path "file-code")
+        :else (icon-path-for-mime-type (:mime_type f))))
