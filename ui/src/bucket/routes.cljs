@@ -26,12 +26,13 @@
   "Update the global state's `:files` key to the files under `p`, and set
    `:path` to the segments of the given path."
   (GET (path/join "/files/" p "/")
-       {:handler (fn [files]
-                   (swap! state/global
-                          (fn [s]
-                            ;; update the path and the files for the path
-                            (assoc s :files (process-files files)
-                                     :path (path/segmentize p)))))
+       {:handler
+        (fn [files]
+          (swap! state/global
+                 (fn [s]
+                   ;; update the path and the files for the path
+                   (assoc s :files (process-files files)
+                          :path (path/segmentize (js/decodeURIComponent p))))))
         :format :json
         :response-format :json
         :keywords? true

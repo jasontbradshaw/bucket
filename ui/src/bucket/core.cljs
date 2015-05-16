@@ -47,8 +47,7 @@
 
 (defcomponent file [file owner]
   (render [this]
-    (html [:div {:class "file"
-                 :data-mime-type (:mime_type file)}
+    (html [:div {:class "file"}
            (let [link (if (:is_directory file)
                         (path/join (history/current-path) (:name file) "/")
                         (string/replace
