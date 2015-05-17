@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -128,40 +127,6 @@ func partitionByDigitness(s string) []string {
 	result = append(result, cur)
 
 	return result
-}
-
-// a map of lowercase file extensions, including leading `.`, to whether they're
-// a source code file extension or not.
-var CODE_EXTS = make(map[string]bool)
-
-// returns true if the file has a recognized source-code extension, false
-// otherwise.
-func isSourceCode(fileName string) bool {
-	dotIndex := strings.LastIndex(fileName, ".")
-	if dotIndex < 0 {
-		return false
-	}
-
-	ext := strings.ToLower(fileName[dotIndex:])
-
-	// if our map is empty, populate it from our "database" file
-	if len(CODE_EXTS) == 0 {
-		file, err := os.Open("./source-code-file-extensions.txt")
-		if err != nil {
-			panic(err)
-		}
-		defer file.Close()
-
-		// read every line into our map of source code extensions
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			CODE_EXTS["."+strings.ToLower(strings.TrimSpace(scanner.Text()))] = true
-		}
-	}
-
-	// return whether the file extension exists in our cache
-	_, isSourceCode := CODE_EXTS[ext]
-	return isSourceCode
 }
 
 func writeJSONResponse(w http.ResponseWriter, data interface{}) {
