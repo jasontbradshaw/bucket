@@ -417,29 +417,66 @@ func getThumbnail(w http.ResponseWriter, r *http.Request) {
 	mimeType := getMIMEType(normalizedPath)
 
 	var cmd *exec.Cmd
-	size := "256"
+
+	size := "64"    // square size of the image in pixels
+	quality := 0.25 // quality of the image as fraction between 0 and 1
+
 	if mimeType == "image/svg+xml" {
 		// simply return the image as-is if it's an SVG image
 		http.ServeFile(w, r, normalizedPath)
 		return
 	} else if strings.Index(mimeType, "image") == 0 {
+		// hint to the encoder that we're not making a very large image, which
+		// apparently saves memory and cycles. the ^ tells it to treat these as
+		// minimum dimensions, but to preserve the aspect ratio.
+		gmSize := size + "x" + size + "^"
+
 		// generate a JPEG thumbnail for the image using GraphicsMagick
 		cmd = exec.Command(
 			"gm", "convert",
-			"-size", size+"x"+size,
+
+			// hint to the encoder that we're not making a very large image, which
+			// apparently saves memory and cycles. this must come _before_ the file,
+			// otherwise it does us no good!
+			"-size", gmSize,
+
+			// the file we're processing
 			normalizedPath,
-			"-geometry", size+"x"+size+"^",
+
+			// this tells it we really want this as the true output size of our image
+			"-geometry", gmSize,
+
+			// strips EXIF/etc. (apparently basically all metadata) from the image
 			"+profile", "\"*\"",
+
+			// lower the quality. quality is between 0 and 100 where 100 is best.
+			"-quality", fmt.Sprintf("%0.f", 100*quality),
+
+			// output a JPEG to stdout
 			"jpeg:-",
 		)
 	} else if strings.Index(mimeType, "video") == 0 {
 		// generate a JPEG thumbnail for the image using ffmpeg
 		cmd = exec.Command(
 			"ffmpeg",
+
+			// the file we're processing
 			"-i", normalizedPath,
+
+			// generate an image with a minimum dimension of our size, preserving the
+			// original aspect ratio.
 			"-vf", "thumbnail,scale=-1:"+size,
+
+			// process a single frame of the video
 			"-frames:v", "1",
+
+			// we want a JPEG (or "motion" JPEG, as it were)
 			"-f", "mjpeg",
+
+			// lower the quality. quality is between 1 and 31 where 1 is best
+			"-q:v", fmt.Sprintf("%0.f", 31*(1.0-quality)),
+
+			// output to stdout
 			"-",
 		)
 	} else {
@@ -450,10 +487,15 @@ func getThumbnail(w http.ResponseWriter, r *http.Request) {
 
 	// run the command we created above and get its JPEG output
 	var out bytes.Buffer
+	var eOut bytes.Buffer
+
 	cmd.Stdout = &out
+	cmd.Stderr = &eOut
+
 	err = cmd.Run()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, "Error generating thumbnail", 500)
+		log.Printf("%s", eOut.String())
 		return
 	}
 
