@@ -1,36 +1,15 @@
 (ns bucket.routes
-  (:require [ajax.core :refer [GET]]
-            [bucket.history :as history]
+  (:require [bucket.history :as history]
             [bucket.path :as path]
-            [bucket.state :as state]
-            [bucket.util :as util]
-            [clojure.string :as string]
-            [cljs.core.async :refer [put! chan]]
+            [bucket.fast-path :as fast-path]
             [secretary.core :as secretary :refer-macros [defroute]]))
 
-(defn process-files [files]
-  "Given a list of files, processes them according to our preferences."
-  (let [show-hidden (:show-hidden @state/global)]
-    (filterv #(or show-hidden (not (:is_hidden %))) files)))
-
-(defn update-files-and-path! [p]
-  "Update the global state's `:files` key to the files under `p`, and set
-   `:path` to the segments of the given path."
-  (GET (path/join "/files/" p "/")
-       {:handler
-        (fn [files]
-          (swap! state/global
-                 (fn [s]
-                   ;; update the path and the files for the path
-                   (assoc s :files (process-files files)
-                          :path (path/segmentize (js/decodeURIComponent p))))))
-        :format :json
-        :response-format :json
-        :keywords? true
-        :headers {"Content-Type" "application/json"}}))
-
 (defroute home-path #"/home(.*)" [path]
-  (update-files-and-path! path))
+  ;; immediately notify that we want to change to this path. if someone else
+  ;; has already notified, this does nothing. then, immediately confirm that we
+  ;; want to change the path so it will actually be changed.
+  (fast-path/notify! path)
+  (fast-path/confirm! path))
 
 (defn navigate!
   "Navigate the history to a new URL."

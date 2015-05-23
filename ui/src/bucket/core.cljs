@@ -1,11 +1,10 @@
 (ns bucket.core
-  (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [bucket.routes :as routes]
+            [bucket.fast-path :as fast-path]
             [bucket.history :as history]
             [bucket.path :as path]
             [bucket.state :as state]
             [bucket.util :as util]
-            [cljs.core.async :refer [put! chan <!]]
             [clojure.string :as string]
             [devtools.core :as devtools]
             [om-tools.core :refer-macros [defcomponent]]
@@ -24,6 +23,7 @@
       (let [link (:href path-segment)]
         [:a {:class "nav-breadcrumb"
              :href link
+             :on-mouse-down #(fast-path/notify! link)
              :on-click (fn [e]
                          (do
                            (.preventDefault e)
@@ -52,9 +52,13 @@
                         (path/join (history/current-path) (:name file) "/")
                         (string/replace
                           (path/join (history/current-path) (:name file))
-                          #"^/home/" "/files/"))]
+                          #"^/home/" "/files/"))
+                 notify! (if (:is_directory file)
+                           #(fast-path/notify! link)
+                           identity)]
              [:a {:href link
                   :class "file-name"
+                  :on-mouse-down notify!
                   :on-click (fn [e]
                               (if (:is_directory file)
                                 (do
