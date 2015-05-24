@@ -4,7 +4,7 @@
             [bucket.fast-path :as fast-path]
             [secretary.core :as secretary :refer-macros [defroute]]))
 
-(defroute home-path #"/home(.*)" [path]
+(defroute root #"/browse(.*)" [path]
   ;; immediately notify that we want to change to this path. if someone else
   ;; has already notified, this does nothing. then, immediately confirm that we
   ;; want to change the path so it will actually be changed.

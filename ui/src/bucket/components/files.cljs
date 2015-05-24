@@ -17,7 +17,7 @@
                         (path/join (history/current-path) (:name file) "/")
                         (string/replace
                           (path/join (history/current-path) (:name file))
-                          #"^/home/" "/files/"))
+                          #"^/browse" "/files/"))
                  notify! (if (:is_directory file)
                            #(fast-path/notify! link)
                            identity)]

@@ -140,9 +140,9 @@
   "Notify that the data for a path should be fetched. Must be followed by a
    `confirm` call in order to actually change the path!"
   (put! queue {:type :notification
-               :path (string/replace path #"^/home/" "/")}))
+               :path (string/replace path #"^/browse" "/")}))
 
 (defn confirm! [path]
   "Confirm that a path was selected and should be changed to."
   (put! queue {:type :confirmation
-               :path (string/replace path #"^/home/" "/")}))
+               :path (string/replace path #"^/browse" "/")}))

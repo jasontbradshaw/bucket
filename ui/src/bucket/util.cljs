@@ -6,7 +6,7 @@
 
 (defn- icon-path [s]
   "Returns a path to the icon with the given name."
-  (js/encodeURI (str "/resources/images/" s ".svg")))
+  (js/encodeURI (path/join "/resources/images/" (str s ".svg"))))
 
 (defn- icon-path-for-mime-type [t]
   "Given a MIME type string, returns the path to an appropriate icon image."
@@ -31,4 +31,4 @@
   (js/encodeURI
     (string/replace
       (path/join (history/current-path) (:name f))
-      #"^/home/" "/thumbnails/")))
+      #"^/browse" "/thumbnails/")))

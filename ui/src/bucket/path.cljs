@@ -12,7 +12,7 @@
 (defn segmentize [path]
   "Given a path string, turns it into a vector of segment hashes."
   (->> (split path)
-       (reduce #(conj %1 (conj (last %1) %2)) [["home"]])
+       (reduce #(conj %1 (conj (last %1) %2)) [["browse"]])
        (map (fn [segments]
                (let [href (str "/" (apply join segments) "/")]
                  {:href href

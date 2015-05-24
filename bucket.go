@@ -543,8 +543,8 @@ func main() {
 		http.ServeFile(w, r, "ui/resources/"+mux.Vars(r)["path"])
 	})
 
-	// /home (UI)
-	router.HandleFunc("/home{path:.*}", func(w http.ResponseWriter, r *http.Request) {
+	// /browse (UI)
+	router.HandleFunc("/browse{path:.*}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui/resources/index.html")
 	})
 
