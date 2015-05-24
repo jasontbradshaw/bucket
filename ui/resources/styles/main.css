@@ -37,7 +37,7 @@ nav {
 .nav-breadcrumb:visited {
   color: white;
 }
-.nav-breadcrumb:hover, .nav-breadcrumb:focus {
+.nav-breadcrumb:hover {
   text-decoration: underline;
   color: #00aaee;
 }

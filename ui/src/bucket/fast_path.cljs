@@ -118,8 +118,6 @@
              (when (and req
                       (not (:pending req))
                       (:confirmed req))
-                 (.log js/console "Time taken:"
-                       (- (.getTime (js/Date.)) (:created-at req)))
                  (update-path! path (:files (get s path)))
                  (dissoc s path))
                s))))
