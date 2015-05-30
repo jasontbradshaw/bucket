@@ -21,7 +21,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/justinas/alice"
 )
 
 var ROOT = ""
@@ -503,6 +505,11 @@ func getThumbnail(w http.ResponseWriter, r *http.Request) {
 	w.Write(out.Bytes())
 }
 
+// log requests to the console
+func loggingHandler(h http.Handler) http.Handler {
+	return handlers.CombinedLoggingHandler(os.Stdout, h)
+}
+
 func main() {
 	// ensure we have all the binaries we need
 	requiredBinaries := []string{"gm", "ffmpeg"}
@@ -518,6 +525,12 @@ func main() {
 
 	ROOT = path.Clean(os.Args[1])
 
+	middlewares := alice.New(
+		loggingHandler,
+		handlers.CompressHandler,
+		handlers.HTTPMethodOverrideHandler,
+	)
+
 	router := mux.NewRouter()
 
 	// /files
@@ -525,10 +538,8 @@ func main() {
 	// without a trailing slash indicates a file.
 	filesJSON := router.Headers("Content-Type", "application/json").Subrouter()
 	filesJSON.HandleFunc("/files/{path:.*[^/]$}", getInfo).
-		Headers("Content-Type", "application/json").
 		Methods("GET")
 	filesJSON.HandleFunc("/files{path:.*}/", getDirectory).
-		Headers("Content-Type", "application/json").
 		Methods("GET")
 
 	router.HandleFunc("/files/{path:.*}", download).
@@ -541,14 +552,14 @@ func main() {
 	// /resources (static files)
 	router.HandleFunc("/resources/{path:.*}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui/resources/"+mux.Vars(r)["path"])
-	})
+	}).Methods("GET")
 
 	// /browse (UI)
 	router.HandleFunc("/browse{path:.*}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui/resources/index.html")
-	})
+	}).Methods("GET")
 
 	addr := "127.0.0.1:3000"
 	fmt.Printf("Serving %s to %s...\n", ROOT, addr)
-	http.ListenAndServe(addr, router)
+	http.ListenAndServe(addr, middlewares.Then(router))
 }
