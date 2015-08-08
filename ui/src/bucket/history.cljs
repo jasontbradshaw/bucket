@@ -39,7 +39,7 @@
   ([path {:keys [replace state title]
           :or {replace false
                state nil
-               title (.-title js/document)}}]
+               title (current-title)}}]
    (if replace
      (replace-state! state title path)
      (push-state! state title path))))
